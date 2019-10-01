@@ -7,111 +7,34 @@
     <version>2.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <organization>
-        <name>SoftInstigate</name>
-        <url>http://www.softinstigate.com</url>
-    </organization>
-
-    <developers>
-        <developer>
-            <id>ujibang</id>
-            <name>Andrea</name>
-            <email>andrea@softinstigate.com</email>
-            <url>https://www.linkedin.com/in/adicesare</url>
-            <organization>SoftInstigate</organization>
-            <organizationUrl>http://www.softinstigate.com</organizationUrl>
-            <roles>
-                <role>developer</role>
-            </roles>
-            <timezone>+1</timezone>
-            <properties>
-                <picUrl>https://pbs.twimg.com/profile_images/491316822101479424/dfngbj7q.jpeg</picUrl>
-            </properties>
-        </developer>
-    </developers>
-
-    <repositories>
-        <repository>
-            <id>oss-sonatype</id>
-            <name>oss.sonatype.org</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-            <layout>default</layout>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
-    <distributionManagement>
-        <repository>
-            <id>pro-release</id>
-            <name>S3 Release Repository</name>
-            <url>s3://maven.softinstigate.com/release</url>
-        </repository>
-        <snapshotRepository>
-            <id>pro-snapshot</id>
-            <name>S3 Snapshot Repository</name>
-            <url>s3://maven.softinstigate.com/snapshot</url>
-        </snapshotRepository>
-    </distributionManagement>
+    <parent>
+        <groupId>com.softinstigate.restheart</groupId>
+        <artifactId>restheart-platform</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
 
     <build>
         <finalName>si-lka</finalName>
-        <extensions>
-            <extension>
-                <groupId>org.springframework.build</groupId>
-                <artifactId>aws-maven</artifactId>
-                <version>5.0.0.RELEASE</version>
-            </extension>
-        </extensions>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.1.1</version>
-                <executions>
-                    <execution>
-                        <id>bin</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                        <configuration>
-                            <id>bin</id>
-                            <appendAssemblyId>false</appendAssemblyId>
-                            <finalName>${project.artifactId}-${project.version}</finalName>
-                            <descriptors>
-                                <descriptor>assembly.xml</descriptor>
-                            </descriptors>
-                            <attach>false</attach>
-                            <tarLongFileMode>posix</tarLongFileMode>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>
 
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-    </properties>
     <dependencies>
         <dependency>
             <groupId>org.restheart</groupId>
             <artifactId>restheart</artifactId>
-            <version>4.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.auth0</groupId>
             <artifactId>java-jwt</artifactId>
-            <version>3.4.0</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.12</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
