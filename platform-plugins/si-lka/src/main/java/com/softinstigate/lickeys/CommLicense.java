@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -187,6 +188,12 @@ public class CommLicense implements Initializer {
                 try {
                     registerAcceptance(licenseKeyClaims.getJti());
                     this.status = STATUS.OK;
+                } catch (AccessDeniedException ex) {
+                    LOGGER.warn("Coudn't register the license approval "
+                            + "because the directory {} is not writable. "
+                            + "Restarting the server requires it to be approved again.",
+                            licensePath.getParent());
+                    this.status = STATUS.OK;
                 } catch (IOException | URISyntaxException ex) {
                     LOGGER.error("Error registering license approval: {}",
                             ex.getMessage());
@@ -224,7 +231,6 @@ public class CommLicense implements Initializer {
 
             if (Files.notExists(licenseDirPath)
                     || !Files.isDirectory(licenseDirPath)
-                    || !Files.isWritable(licenseDirPath)
                     || Files.notExists(licensePath)
                     || !Files.isReadable(licensePath)) {
                 error = true;
@@ -561,7 +567,7 @@ public class CommLicense implements Initializer {
         }
 
         rhRootPathHandler.addExactPath(ACCEPT_EXACT_PATH, licenseActivator(done,
-                requestBlockerTransformer, licenseKeyId));
+                requestBlockerTransformer, licenseKeyId, licensePath));
 
         rhRootPathHandler.addExactPath(LICENSE_TEXT_EXACT_PATH,
                 webContentSender(licensePath));
@@ -635,7 +641,8 @@ public class CommLicense implements Initializer {
 
     private HttpHandler licenseActivator(CountDownLatch done,
             GlobalTransformer requestBlockerTransformer,
-            String licenseKeyId) {
+            String licenseKeyId,
+            Path licensePath) {
         return new HttpHandler() {
             @Override
             public void handleRequest(HttpServerExchange hse) throws Exception {
@@ -645,19 +652,26 @@ public class CommLicense implements Initializer {
 
                     try {
                         registerAcceptance(licenseKeyId);
-
-                        hse.setStatusCode(HttpStatus.SC_OK);
-                        // remove request blocker
-                        TransformerHandler.getGlobalTransformers()
-                                .remove(requestBlockerTransformer);
-                        LOGGER.info("Requests are enabled.");
-                        // release the latch
-                        done.countDown();
-                    } catch (IOException ioe) {
-                        LOGGER.error("Error saving the license approval.", ioe);
+                    } catch (AccessDeniedException ex) {
+                        LOGGER.warn("Coudn't register the license approval "
+                                + "because the directory {} is not writable. "
+                                + "Restarting the server requires it to be approved again.",
+                                licensePath.getParent());
+                    } catch (IOException | URISyntaxException ex) {
+                        LOGGER.error("Error registering license approval: {}",
+                                ex.getMessage());
                         hse.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
                     }
-                } else if (HttpString.tryFromString("OPTIONS").equals(hse.getRequestMethod())) {
+
+                    hse.setStatusCode(HttpStatus.SC_OK);
+                    // remove request blocker
+                    TransformerHandler.getGlobalTransformers()
+                            .remove(requestBlockerTransformer);
+                    LOGGER.info("Requests are enabled.");
+                    // release the latch
+                    done.countDown();
+                } else if (HttpString.tryFromString(
+                        "OPTIONS").equals(hse.getRequestMethod())) {
                     hse.getResponseHeaders()
                             .put(HttpString.tryFromString(
                                     "Access-Control-Allow-Origin"), "*")
@@ -819,6 +833,7 @@ public class CommLicense implements Initializer {
      */
     private static byte[] getFile(Path filePath) throws IOException {
         return Files.readAllBytes(filePath);
+
     }
 
     /**
@@ -869,6 +884,7 @@ public class CommLicense implements Initializer {
             return Files.exists(getAbsolutePath(LIC_APPROVAL_FILE_NAME));
         } catch (URISyntaxException ex) {
             return false;
+
         }
     }
 }
