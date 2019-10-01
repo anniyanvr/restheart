@@ -1,0 +1,5 @@
+{
+  'timestamp': '2019-04-29T10:28:46.949845Z',
+  'licenseKeyId': '1fwcnlbpotkzyurpw7hm1d94ezl54p809kdrjiz1xcxvtaslqr',
+  'installationId': 'mzwglqgmtjrvunaarfvnfpqn0nfbxhmh8p6b3fdnjjr3k1czb'
+}
