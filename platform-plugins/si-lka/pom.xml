@@ -4,13 +4,13 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.softinstigate.lickeys</groupId>
     <artifactId>si-lka</artifactId>
-    <version>2.1.0</version>
+    <version>2.1.1</version>
     <packaging>jar</packaging>
 
     <parent>
         <groupId>com.softinstigate.restheart</groupId>
         <artifactId>restheart-platform</artifactId>
-        <version>4.1.14-SNAPSHOT</version>
+        <version>4.1.14</version>
     </parent>
 
     <build>
