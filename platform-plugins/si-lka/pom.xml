@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.softinstigate.lickeys</groupId>
-    <artifactId>si-lka</artifactId>
-    <version>2.1.1</version>
-    <packaging>jar</packaging>
-
     <parent>
         <groupId>com.softinstigate.restheart</groupId>
         <artifactId>restheart-platform</artifactId>
         <version>4.1.15-SNAPSHOT</version>
     </parent>
+
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.softinstigate.lickeys</groupId>
+    <artifactId>si-lka</artifactId>
+    <packaging>jar</packaging>
 
     <build>
         <finalName>si-lka</finalName>
