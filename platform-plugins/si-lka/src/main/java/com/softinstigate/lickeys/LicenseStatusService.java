@@ -12,55 +12,45 @@ package com.softinstigate.lickeys;
 
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.HttpString;
-import java.util.Map;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
-import org.restheart.handlers.RequestContext;
+import org.restheart.exchange.BsonRequest;
+import org.restheart.exchange.BsonResponse;
+import org.restheart.plugins.BsonService;
 import org.restheart.plugins.RegisterPlugin;
-import org.restheart.plugins.Service;
 import org.restheart.utils.HttpStatus;
 
 /**
  *
  * @author Andrea Di Cesare <andrea@softinstigate.com>
  */
-@RegisterPlugin(name = "istatus", description = "Internal service that allows querying for server status")
-public class LicenseStatusService extends Service {
-    public LicenseStatusService(Map<String, Object> confArgs) {
-        super(confArgs);
-    }
-
+@RegisterPlugin(
+        name = "istatus", 
+        description = "Internal service that allows querying for server status",
+        defaultURI = "/_internal/status")
+public class LicenseStatusService implements BsonService {
     @Override
-    public void handleRequest(HttpServerExchange exchange, RequestContext context) throws Exception {
-        if (context.isOptions()) {
-            handleOptions(exchange, context);
-        } else if (context.isGet()) {
-            if (checkRole(exchange)) {
+    public void handle(BsonRequest request, BsonResponse response) throws Exception {
+        if (request.isOptions()) {
+            handleOptions(request);
+        } else if (request.isGet()) {
+            if (checkRole(request.getExchange())) {
                 var status = CommLicense.getStatus();
 
                 if (status == null) {
-                    context.setResponseStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+                    response.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
                 } else {
-                    context.setResponseStatusCode(HttpStatus.SC_OK);
-                    context.setResponseContent(new BsonDocument("status",
+                    response.setStatusCode(HttpStatus.SC_OK);
+                    response.setContent(new BsonDocument("status",
                             new BsonString(status.name())));
                 }
             } else {
-                context.setResponseStatusCode(HttpStatus.SC_FORBIDDEN);
+                response.setStatusCode(HttpStatus.SC_FORBIDDEN);
             }
         } else {
-            context.setResponseStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
+            response.setStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
         }
-
-        next(exchange, context);
     }
-
-    @Override
-    public String defaultUri() {
-        return "/_internal/status";
-    }
-    
-    
 
     private boolean checkRole(HttpServerExchange exchange) {
         var roles = exchange.getRequestHeaders()

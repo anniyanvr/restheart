@@ -29,6 +29,6 @@ public class TestCommLicense {
 
         var activator = new CommLicense();
 
-        activator.init(null);
+        activator.init();
     }
 }

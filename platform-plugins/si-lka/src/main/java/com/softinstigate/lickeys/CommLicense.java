@@ -17,6 +17,9 @@ import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
+import com.mongodb.client.MongoClient;
+import com.restheart.utils.LogUtils;
+import com.restheart.utils.ResourcesExtractor;
 import static io.undertow.Handlers.resource;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -48,23 +51,21 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CountDownLatch;
-import org.bson.BsonValue;
-import org.restheart.Bootstrapper;
 import org.restheart.Version;
-import org.restheart.handlers.RequestContext;
-import org.restheart.handlers.metadata.TransformerHandler;
-import org.restheart.plugins.GlobalTransformer;
-import org.restheart.metadata.TransformerMetadata;
-import org.restheart.plugins.Transformer;
-import org.restheart.handlers.RequestContextPredicate;
+import org.restheart.exchange.BsonRequest;
+import org.restheart.exchange.BsonResponse;
+import org.restheart.plugins.BsonInterceptor;
+import static org.restheart.plugins.ConfigurablePlugin.argValue;
+import org.restheart.plugins.ConfigurationScope;
+import org.restheart.plugins.InitPoint;
 import org.restheart.plugins.Initializer;
+import org.restheart.plugins.InjectConfiguration;
+import org.restheart.plugins.InjectMongoClient;
+import org.restheart.plugins.InjectPluginsRegistry;
 import org.restheart.plugins.PluginsRegistry;
 import org.restheart.plugins.RegisterPlugin;
 import org.restheart.utils.ChannelReader;
 import org.restheart.utils.HttpStatus;
-import org.restheart.utils.LogUtils;
-import org.restheart.utils.ResourcesExtractor;
-import org.restheart.utils.ResponseHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,7 +75,8 @@ import org.slf4j.LoggerFactory;
  */
 @RegisterPlugin(name = "commLicense",
         description = "Activates the commercial license",
-        priority = Integer.MIN_VALUE)
+        priority = Integer.MIN_VALUE,
+        initPoint = InitPoint.AFTER_STARTUP)
 public class CommLicense implements Initializer {
     private static final Logger LOGGER
             = LoggerFactory.getLogger("com.restheart.CommLicense");
@@ -98,8 +100,29 @@ public class CommLicense implements Initializer {
 
     private STATUS status = STATUS.INITIALIZIG;
 
+    private static PluginsRegistry REGISTRY;
+
+    private Map<String, Object> conf;
+
+    private MongoClient mclient;
+
+    @InjectPluginsRegistry
+    public void setPluginRegistry(PluginsRegistry pluginRegistry) {
+        REGISTRY = pluginRegistry;
+    }
+
+    @InjectConfiguration(scope = ConfigurationScope.ALL)
+    public void setConfiguration(Map<String, Object> conf) {
+        this.conf = conf;
+    }
+
+    @InjectMongoClient
+    public void setMongoClient(MongoClient mclient) {
+        this.mclient = mclient;
+    }
+
     @Override
-    public void init(Map<String, Object> confArgs) {
+    public void init() {
         var licensePath = checkLicenseKeyDirectory();
 
         // if lk does not exist, start the form
@@ -107,16 +130,11 @@ public class CommLicense implements Initializer {
 
         if (licenseKeyPath == null) {
             this.status = STATUS.LICENSE_NOT_YET_ACCEPTED;
-            // block all requests to restheart
-            var requestBlockerTransformer = blockAllRequests();
-
             requestAcceptingLicense();
 
             LOGGER.warn("All requests are temporarily blocked.");
 
-            startAcceptanceForm(requestBlockerTransformer,
-                    null,
-                    licensePath);
+            startAcceptanceForm(null, licensePath);
 
             licenseKeyPath = checkLicenseKey();
 
@@ -202,15 +220,11 @@ public class CommLicense implements Initializer {
             } else {
                 this.status = STATUS.LICENSE_NOT_YET_ACCEPTED;
                 // block all requests to restheart
-                var requestBlockerTransformer = blockAllRequests();
-
                 requestAcceptingLicense();
 
                 LOGGER.warn("All requests are temporarily blocked.");
 
-                startAcceptanceForm(requestBlockerTransformer,
-                        licenseKeyClaims.getJti(),
-                        licensePath);
+                startAcceptanceForm(licenseKeyClaims.getJti(), licensePath);
             }
         }
     }
@@ -399,21 +413,46 @@ public class CommLicense implements Initializer {
      * However, in this case we have server possibly accepting connections with
      * different listeners
      */
-    private static void requestAcceptingLicense() {
+    private void requestAcceptingLicense() {
         String host;
         int port;
         String prot;
 
-        if (Bootstrapper.getConfiguration() != null
-                && Bootstrapper.getConfiguration().isHttpListener()) {
+        boolean httpsListener;
+        String httpsHost;
+        Integer httpsPort;
 
-            host = Bootstrapper.getConfiguration().getHttpHost();
-            port = Bootstrapper.getConfiguration().getHttpPort();
+        try {
+            httpsListener = argValue(conf, "https-listener");
+            httpsHost = argValue(conf, "https-host");
+            httpsPort = argValue(conf, "https-port");
+        } catch (Throwable t) {
+            httpsListener = false;
+            httpsHost = "0.0.0.0";
+            httpsPort = 8080;
+        }
+
+        boolean httpListener;
+        String httpHost;
+        Integer httpPort;
+
+        try {
+            httpListener = argValue(conf, "http-listener");
+            httpHost = argValue(conf, "https-host");
+            httpPort = argValue(conf, "http-port");
+        } catch (Throwable t) {
+            httpListener = false;
+            httpHost = "0.0.0.0";
+            httpPort = 8080;
+        }
+
+        if (httpListener) {
+            host = httpHost;
+            port = httpPort;
             prot = "http";
-        } else if (Bootstrapper.getConfiguration() != null
-                && Bootstrapper.getConfiguration().isHttpsListener()) {
-            host = Bootstrapper.getConfiguration().getHttpsHost();
-            port = Bootstrapper.getConfiguration().getHttpsPort();
+        } else if (httpsListener) {
+            host = httpsHost;
+            port = httpsPort;
             prot = "https";
         } else {
             // ajp listener
@@ -479,8 +518,7 @@ public class CommLicense implements Initializer {
     }
 
     public static STATUS getStatus() {
-        var _clpr = PluginsRegistry
-                .getInstance()
+        var _clpr = REGISTRY
                 .getInitializers()
                 .stream()
                 .filter(pr -> "commLicense".equals(pr.getName()))
@@ -531,14 +569,11 @@ public class CommLicense implements Initializer {
     /**
      * Start an http server with the form to approve the license
      *
-     * @param requestBlockerTransformer
      * @param licenseKeyId if null, also allow saving license
      * @param licensePath
      */
-    private void startAcceptanceForm(GlobalTransformer requestBlockerTransformer,
-            String licenseKeyId,
-            Path licensePath) {
-        final PathHandler rhRootPathHandler = Bootstrapper.getRootPathHandler();
+    private void startAcceptanceForm(String licenseKeyId, Path licensePath) {
+        final PathHandler rhRootPathHandler = REGISTRY.getRootPathHandler();
         final CountDownLatch done = new CountDownLatch(1);
 
         String licenseAcceptFormPath = "license-accept-form";
@@ -546,7 +581,7 @@ public class CommLicense implements Initializer {
 
         try {
             licenseAcceptFormFile = ResourcesExtractor
-                    .extract(licenseAcceptFormPath);
+                    .extract(this.getClass().getName(), licenseAcceptFormPath);
         } catch (URISyntaxException | IOException ex) {
             LOGGER.error("Error extracting License form files: {}",
                     ex.getMessage());
@@ -566,8 +601,8 @@ public class CommLicense implements Initializer {
                     licenseSaver());
         }
 
-        rhRootPathHandler.addExactPath(ACCEPT_EXACT_PATH, licenseActivator(done,
-                requestBlockerTransformer, licenseKeyId, licensePath));
+        rhRootPathHandler.addExactPath(ACCEPT_EXACT_PATH,
+                licenseActivator(done, licenseKeyId, licensePath));
 
         rhRootPathHandler.addExactPath(LICENSE_TEXT_EXACT_PATH,
                 webContentSender(licensePath));
@@ -578,7 +613,8 @@ public class CommLicense implements Initializer {
         } catch (InterruptedException ex) {
             LOGGER.error("Error waiting for License Agreement to be accepted.");
             try {
-                ResourcesExtractor.deleteTempDir(licenseAcceptFormPath,
+                ResourcesExtractor.deleteTempDir(this.getClass().getName(),
+                        licenseAcceptFormPath,
                         licenseAcceptFormFile);
             } catch (URISyntaxException | IOException ex2) {
                 // nothing to do
@@ -587,7 +623,8 @@ public class CommLicense implements Initializer {
             System.exit(-5050);
         } finally {
             try {
-                ResourcesExtractor.deleteTempDir(licenseAcceptFormPath,
+                ResourcesExtractor.deleteTempDir(this.getClass().getName(),
+                        licenseAcceptFormPath,
                         licenseAcceptFormFile);
             } catch (URISyntaxException | IOException ex) {
                 // nothing to do
@@ -610,134 +647,109 @@ public class CommLicense implements Initializer {
         }
     }
 
-    private GlobalTransformer blockAllRequests() {
-        GlobalTransformer requestBlockerTransformer = new GlobalTransformer(
-                new Transformer() {
-            @Override
-            public void transform(HttpServerExchange hse, RequestContext rc, BsonValue contentToTransform, BsonValue args) {
-                ResponseHelper.endExchangeWithMessage(
-                        hse,
-                        rc,
-                        HttpStatus.SC_NOT_ACCEPTABLE,
-                        "Request not executed. "
-                        + "License Agreement not yet accepted.");
-            }
-        },
-                new RequestContextPredicate() {
-            @Override
-            public boolean resolve(HttpServerExchange hse, RequestContext context) {
-                return true;
-            }
-        },
-                TransformerMetadata.PHASE.REQUEST,
-                TransformerMetadata.SCOPE.THIS,
-                null, null);
+    @RegisterPlugin(name = "", description = "")
+    class Blocker implements BsonInterceptor {
+        @Override
+        public void handle(BsonRequest request, BsonResponse response) throws Exception {
+            response.setInError(HttpStatus.SC_NOT_ACCEPTABLE,
+                    "Request not executed. "
+                    + "License Agreement not yet accepted.");
+        }
 
-        // add checker to avoid any request
-        TransformerHandler.getGlobalTransformers().add(requestBlockerTransformer);
-
-        return requestBlockerTransformer;
+        @Override
+        public boolean resolve(BsonRequest request, BsonResponse response) {
+            return true;
+        }
     }
 
     private HttpHandler licenseActivator(CountDownLatch done,
-            GlobalTransformer requestBlockerTransformer,
             String licenseKeyId,
             Path licensePath) {
-        return new HttpHandler() {
-            @Override
-            public void handleRequest(HttpServerExchange hse) throws Exception {
-                if (HttpString.tryFromString("POST")
-                        .equals(hse.getRequestMethod())) {
-                    LOGGER.info("License Agreement accepted.");
+        return (HttpServerExchange hse) -> {
+            if (HttpString.tryFromString("POST")
+                    .equals(hse.getRequestMethod())) {
+                LOGGER.info("License Agreement accepted.");
 
-                    try {
-                        registerAcceptance(licenseKeyId);
-                    } catch (AccessDeniedException ex) {
-                        LOGGER.warn("Coudn't register the license approval "
-                                + "because the directory {} is not writable. "
-                                + "Restarting the server requires it to be approved again.",
-                                licensePath.getParent());
-                    } catch (IOException | URISyntaxException ex) {
-                        LOGGER.error("Error registering license approval: {}",
-                                ex.getMessage());
-                        hse.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
-                    }
-
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                    // remove request blocker
-                    TransformerHandler.getGlobalTransformers()
-                            .remove(requestBlockerTransformer);
-                    LOGGER.info("Requests are enabled.");
-                    // release the latch
-                    done.countDown();
-                } else if (HttpString.tryFromString(
-                        "OPTIONS").equals(hse.getRequestMethod())) {
-                    hse.getResponseHeaders()
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Origin"), "*")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Methods"), "POST")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Headers"),
-                                    "Accept, Accept-Encoding, "
-                                    + "Content-Length, Content-Type, "
-                                    + "Host, Origin, User-Agent");
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                } else {
-                    LOGGER.debug("License Agreement not accepted");
-                    hse.setStatusCode(HttpStatus.SC_NOT_MODIFIED);
+                try {
+                    registerAcceptance(licenseKeyId);
+                } catch (AccessDeniedException ex) {
+                    LOGGER.warn("Coudn't register the license approval "
+                            + "because the directory {} is not writable. "
+                            + "Restarting the server requires it to be approved again.",
+                            licensePath.getParent());
+                } catch (IOException | URISyntaxException ex) {
+                    LOGGER.error("Error registering license approval: {}",
+                            ex.getMessage());
+                    hse.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
                 }
 
-                hse.endExchange();
+                hse.setStatusCode(HttpStatus.SC_OK);
+                // release the latch
+                done.countDown();
+            } else if (HttpString.tryFromString(
+                    "OPTIONS").equals(hse.getRequestMethod())) {
+                hse.getResponseHeaders()
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Origin"), "*")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Methods"), "POST")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Headers"),
+                                "Accept, Accept-Encoding, "
+                                + "Content-Length, Content-Type, "
+                                + "Host, Origin, User-Agent");
+                hse.setStatusCode(HttpStatus.SC_OK);
+            } else {
+                LOGGER.debug("License Agreement not accepted");
+                hse.setStatusCode(HttpStatus.SC_NOT_MODIFIED);
             }
+
+            hse.endExchange();
         };
     }
 
     private HttpHandler licenseSaver() {
-        return new HttpHandler() {
-            @Override
-            public void handleRequest(HttpServerExchange hse) throws Exception {
-                if (HttpString.tryFromString("GET")
-                        .equals(hse.getRequestMethod())) {
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                } else if (HttpString.tryFromString("POST")
-                        .equals(hse.getRequestMethod())) {
-                    try {
-                        var lk = ChannelReader.read(hse.getRequestChannel())
-                                .trim();
+        return (HttpServerExchange hse) -> {
+            if (HttpString.tryFromString("GET")
+                    .equals(hse.getRequestMethod())) {
+                hse.setStatusCode(HttpStatus.SC_OK);
+            } else if (HttpString.tryFromString("POST")
+                    .equals(hse.getRequestMethod())) {
+                try {
+                    var lk = ChannelReader.read(hse.getRequestChannel())
+                            .trim();
 
-                        if (verifyLicenseKey(lk) != null) {
-                            Files.writeString(
-                                    getAbsolutePath(LIC_KEY_FILE_NAME),
-                                    lk);
+                    if (verifyLicenseKey(lk) != null) {
+                        Files.writeString(
+                                getAbsolutePath(LIC_KEY_FILE_NAME),
+                                lk);
 
-                            hse.setStatusCode(HttpStatus.SC_OK);
-                        } else {
-                            hse.setStatusCode(HttpStatus.SC_BAD_REQUEST);
-                        }
-
-                    } catch (IOException ioe) {
-                        LOGGER.error("Error saving the license approval.", ioe);
-                        hse.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+                        hse.setStatusCode(HttpStatus.SC_OK);
+                    } else {
+                        hse.setStatusCode(HttpStatus.SC_BAD_REQUEST);
                     }
-                } else if (HttpString.tryFromString("OPTIONS").equals(hse.getRequestMethod())) {
-                    hse.getResponseHeaders()
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Origin"), "*")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Methods"), "POST")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Headers"),
-                                    "Accept, Accept-Encoding, "
-                                    + "Content-Length, Content-Type, "
-                                    + "Host, Origin, User-Agent");
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                } else {
-                    hse.setStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
-                }
 
-                hse.endExchange();
+                } catch (IOException ioe) {
+                    LOGGER.error("Error saving the license approval.", ioe);
+                    hse.setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+                }
+            } else if (HttpString.tryFromString("OPTIONS").equals(hse.getRequestMethod())) {
+                hse.getResponseHeaders()
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Origin"), "*")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Methods"), "POST")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Headers"),
+                                "Accept, Accept-Encoding, "
+                                + "Content-Length, Content-Type, "
+                                + "Host, Origin, User-Agent");
+                hse.setStatusCode(HttpStatus.SC_OK);
+            } else {
+                hse.setStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
             }
+
+            hse.endExchange();
         };
     }
 
@@ -766,37 +778,34 @@ public class CommLicense implements Initializer {
     }
 
     private static HttpHandler webContentSender(Path licensePath) {
-        return new HttpHandler() {
-            @Override
-            public void handleRequest(HttpServerExchange hse) throws Exception {
-                if (HttpString.tryFromString("GET")
-                        .equals(hse.getRequestMethod())) {
-                    hse.getResponseHeaders().add(HttpString
-                            .tryFromString("Content-Type"),
-                            "text/plain; charset=utf-8");
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                    hse.getResponseSender().send(new String(
-                            getFile(licensePath),
-                            StandardCharsets.UTF_8));
-                } else if (HttpString.tryFromString("OPTIONS")
-                        .equals(hse.getRequestMethod())) {
-                    hse.getResponseHeaders()
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Origin"), "*")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Methods"), "GET")
-                            .put(HttpString.tryFromString(
-                                    "Access-Control-Allow-Headers"), "Accept, "
-                                    + "Accept-Encoding, Content-Length, "
-                                    + "Content-Type, Host, "
-                                    + "Origin, User-Agent");
-                    hse.setStatusCode(HttpStatus.SC_OK);
-                } else {
-                    hse.setStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
-                }
-
-                hse.endExchange();
+        return (HttpServerExchange hse) -> {
+            if (HttpString.tryFromString("GET")
+                    .equals(hse.getRequestMethod())) {
+                hse.getResponseHeaders().add(HttpString
+                        .tryFromString("Content-Type"),
+                        "text/plain; charset=utf-8");
+                hse.setStatusCode(HttpStatus.SC_OK);
+                hse.getResponseSender().send(new String(
+                        getFile(licensePath),
+                        StandardCharsets.UTF_8));
+            } else if (HttpString.tryFromString("OPTIONS")
+                    .equals(hse.getRequestMethod())) {
+                hse.getResponseHeaders()
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Origin"), "*")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Methods"), "GET")
+                        .put(HttpString.tryFromString(
+                                "Access-Control-Allow-Headers"), "Accept, "
+                                + "Accept-Encoding, Content-Length, "
+                                + "Content-Type, Host, "
+                                + "Origin, User-Agent");
+                hse.setStatusCode(HttpStatus.SC_OK);
+            } else {
+                hse.setStatusCode(HttpStatus.SC_NOT_IMPLEMENTED);
             }
+
+            hse.endExchange();
         };
     }
 
