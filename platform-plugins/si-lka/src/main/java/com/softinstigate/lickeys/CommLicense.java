@@ -17,7 +17,6 @@ import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
-import com.mongodb.client.MongoClient;
 import com.restheart.utils.LogUtils;
 import com.restheart.utils.ResourcesExtractor;
 import static io.undertow.Handlers.resource;
@@ -60,7 +59,6 @@ import org.restheart.plugins.ConfigurationScope;
 import org.restheart.plugins.InitPoint;
 import org.restheart.plugins.Initializer;
 import org.restheart.plugins.InjectConfiguration;
-import org.restheart.plugins.InjectMongoClient;
 import org.restheart.plugins.InjectPluginsRegistry;
 import org.restheart.plugins.PluginsRegistry;
 import org.restheart.plugins.RegisterPlugin;
@@ -91,7 +89,7 @@ public class CommLicense implements Initializer {
     private static final String LIC_KEY_FILE_NAME = "comm-license.key";
     private static final String LIC_APPROVAL_FILE_NAME = "license-approval.txt";
 
-    private static DateTimeFormatter DATE_FORMAT = DateTimeFormatter
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter
             .ofPattern("MM/dd/yyyy");
 
     public enum STATUS {
@@ -104,8 +102,6 @@ public class CommLicense implements Initializer {
 
     private Map<String, Object> conf;
 
-    private MongoClient mclient;
-
     @InjectPluginsRegistry
     public void setPluginRegistry(PluginsRegistry pluginRegistry) {
         REGISTRY = pluginRegistry;
@@ -114,11 +110,6 @@ public class CommLicense implements Initializer {
     @InjectConfiguration(scope = ConfigurationScope.ALL)
     public void setConfiguration(Map<String, Object> conf) {
         this.conf = conf;
-    }
-
-    @InjectMongoClient
-    public void setMongoClient(MongoClient mclient) {
-        this.mclient = mclient;
     }
 
     @Override
@@ -459,8 +450,8 @@ public class CommLicense implements Initializer {
             LogUtils.boxedWarn(LOGGER,
                     "The License Agreement has not yet been accepted.",
                     "",
-                    "Only the AJP listener is enabled: accept the license running",
-                    "restheart-platform-security or edit the configuration.",
+                    "Only the AJP listener is enabled: edit the configuration",
+                    "to enable the HTTP(S) listener (or use a proxy).",
                     "",
                     "More information at",
                     "https://restheart.org/docs/setup#accept-license");
