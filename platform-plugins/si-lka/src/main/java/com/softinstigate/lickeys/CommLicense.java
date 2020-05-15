@@ -51,8 +51,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CountDownLatch;
 import org.restheart.Version;
-import org.restheart.exchange.BsonRequest;
-import org.restheart.exchange.BsonResponse;
 import org.restheart.plugins.BsonInterceptor;
 import static org.restheart.plugins.ConfigurablePlugin.argValue;
 import org.restheart.plugins.ConfigurationScope;
@@ -635,21 +633,6 @@ public class CommLicense implements Initializer {
             rhRootPathHandler.removePrefixPath(ROOT_PREFIX_PATH);
         } catch (Throwable t) {
             LOGGER.warn("Cannot stop License Agreement acceptance form", t);
-        }
-    }
-
-    @RegisterPlugin(name = "", description = "")
-    class Blocker implements BsonInterceptor {
-        @Override
-        public void handle(BsonRequest request, BsonResponse response) throws Exception {
-            response.setInError(HttpStatus.SC_NOT_ACCEPTABLE,
-                    "Request not executed. "
-                    + "License Agreement not yet accepted.");
-        }
-
-        @Override
-        public boolean resolve(BsonRequest request, BsonResponse response) {
-            return true;
         }
     }
 
