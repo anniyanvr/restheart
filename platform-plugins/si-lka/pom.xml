@@ -30,7 +30,7 @@
     </dependency>
     <dependency>
       <groupId>com.restheart</groupId>
-      <artifactId>restheart-platform-utils</artifactId>
+      <artifactId>platform-utils</artifactId>
     </dependency>
     <dependency>
       <groupId>com.auth0</groupId>
