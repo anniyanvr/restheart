@@ -1,12 +1,17 @@
-/*
- * Copyright SoftInstigate srl. All Rights Reserved.
- *
+/*-
+ * ========================LICENSE_START=================================
+ * restheart-license-manager
+ * %%
+ * Copyright (C) 2018 - 2020 SoftInstigate
+ * %%
  *
  * The copyright to the computer program(s) herein is the property of
- * SoftInstigate srl, Italy. The program(s) may be used and/or copied only
- * with the written permission of SoftInstigate srl or in accordance with the
- * terms and conditions stipulated in the agreement/contract under which the
- * program(s) have been supplied. This copyright notice must not be removed.
+ * SoftInstigate srl, Italy. The program(s) may be used in accordance with the 
+ * terms and conditions stipulated in the license under which the
+ * program(s) have been supplied and can be modified only with the written 
+ * permission of SoftInstigate srl. This copyright notice must not be removed.
+ *
+ * =========================LICENSE_END==================================
  */
 package com.softinstigate.lickeys;
 
@@ -27,7 +32,7 @@ import org.slf4j.LoggerFactory;
  */
 public class LicenseKeyClaims {
     private static final Logger LOGGER
-            = LoggerFactory.getLogger("org.restheart.custom.CommLicense");
+            = LoggerFactory.getLogger("org.restheart.CommLicense");
 
     private String jti = null;
     private String licensee = null;
