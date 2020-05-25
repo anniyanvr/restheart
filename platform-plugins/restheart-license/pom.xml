@@ -10,7 +10,7 @@
   </parent>
 
   <groupId>com.softinstigate.lickeys</groupId>
-  <artifactId>si-lka</artifactId>
+  <artifactId>restheart-license</artifactId>
   <packaging>jar</packaging>
 
   <build>
@@ -57,4 +57,5 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+    <name>restheart-license</name>
 </project>
